@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ESP32 Servo Switch (BLE)</title>
+  <title>ESP32 Servo Switch</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; max-width: 720px; margin: 28px auto; padding: 0 16px; }
     .card { border: 1px solid #ddd; border-radius: 14px; padding: 16px; margin: 12px 0; }
@@ -12,7 +12,6 @@
     button:disabled { opacity: .5; cursor: not-allowed; }
     .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
     .status { font-weight: 650; }
-    .hint { color: #444; font-size: 14px; line-height: 1.4; }
     .log { font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; background: #f6f6f6; padding: 12px; border-radius: 14px; min-height: 90px; }
 
     .switch { position: relative; display: inline-block; width: 64px; height: 36px; }
@@ -31,10 +30,6 @@
 
 <body>
   <h1>ESP32 Servo Switch</h1>
-  <p class="hint">
-    Uses <b>Web Bluetooth (BLE)</b>. Best on <b>Chrome/Edge</b> (Android works best).
-    This version filters devices by <code>SERVICE_UUID</code>.
-  </p>
 
   <div class="card row">
     <div>
@@ -47,7 +42,7 @@
   <div class="card row">
     <div>
       <div style="font-weight:700;">Light Switch</div>
-      <div class="hint">Toggle sends <code>ON</code> / <code>OFF</code></div>
+      <div style="color:#444; font-size:14px;">Toggle sends ON / OFF</div>
     </div>
 
     <label class="switch">
@@ -62,35 +57,28 @@
   </div>
 
 <script>
-  // Must match your ESP32 sketch
   const SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
-  const CHAR_UUID    = "abcd1234-1234-1234-1234-abcdef123456"; // writable characteristic
+  const CHAR_UUID    = "abcd1234-1234-1234-1234-abcdef123456";
 
   let device = null;
   let writeChar = null;
 
   const $ = (id) => document.getElementById(id);
+  function log(m){ $("log").textContent += m + "\n"; }
 
-  function log(msg) {
-    const el = $("log");
-    el.textContent += msg + "\n";
-    el.scrollTop = el.scrollHeight;
-  }
-
-  function setConnected(yes) {
+  function setConnected(yes){
     $("btnConnect").disabled = yes;
     $("btnDisconnect").disabled = !yes;
     $("toggle").disabled = !yes;
     $("status").textContent = yes ? `Connected: ${device?.name || "BLE device"}` : "Not connected";
   }
 
-  async function connect() {
+  async function connect(){
     try {
       log("Requesting BLE device...");
 
-      // ✅ Filter by service UUID (your requested change)
       device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [SERVICE_UUID] }]
+        filters: [{ services: [SERVICE_UUID] }]   // shows only your ESP32 service
       });
 
       device.addEventListener("gattserverdisconnected", () => {
@@ -99,7 +87,6 @@
         setConnected(false);
       });
 
-      log(`Selected: ${device.name || "(no name)"}`);
       const server = await device.gatt.connect();
       log("GATT connected");
 
@@ -115,26 +102,15 @@
     }
   }
 
-  async function disconnect() {
-    try {
-      if (device?.gatt?.connected) device.gatt.disconnect();
-    } finally {
-      writeChar = null;
-      setConnected(false);
-    }
+  async function disconnect(){
+    try { if (device?.gatt?.connected) device.gatt.disconnect(); }
+    finally { writeChar = null; setConnected(false); }
   }
 
-  async function send(text) {
-    if (!writeChar) {
-      log("❌ Not connected");
-      return;
-    }
-    try {
-      await writeChar.writeValue(new TextEncoder().encode(text));
-      log("➡️ " + text);
-    } catch (e) {
-      log("❌ Write failed: " + (e?.message || e));
-    }
+  async function send(text){
+    if (!writeChar) return log("❌ Not connected");
+    await writeChar.writeValue(new TextEncoder().encode(text));
+    log("➡️ " + text);
   }
 
   $("btnConnect").addEventListener("click", connect);
