@@ -3,24 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ESP32 BLE Switch</title>
+  <title>ESP32 Servo Switch</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; max-width: 720px; margin: 28px auto; padding: 0 16px; }
     .card { border: 1px solid #ddd; border-radius: 14px; padding: 16px; margin: 12px 0; }
     button { padding: 12px 14px; border-radius: 12px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
     button.primary { background: #111; color: #fff; border: none; }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
     .status { font-weight: 650; }
-    .log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; background: #f6f6f6; padding: 12px; border-radius: 14px; min-height: 100px; }
-    .hint { color: #444; font-size: 14px; line-height: 1.4; }
-    /* Toggle switch */
+    .log { font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; background: #f6f6f6; padding: 12px; border-radius: 14px; min-height: 90px; }
+
     .switch { position: relative; display: inline-block; width: 64px; height: 36px; }
     .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; cursor: pointer; inset: 0;
-      background-color: #ccc; transition: .2s; border-radius: 999px;
-    }
+    .slider { position: absolute; cursor: pointer; inset: 0; background-color: #ccc; transition: .2s; border-radius: 999px; }
     .slider:before {
       position: absolute; content: "";
       height: 28px; width: 28px; left: 4px; top: 4px;
@@ -31,34 +27,27 @@
     input:checked + .slider:before { transform: translateX(28px); }
   </style>
 </head>
-
 <body>
-  <h1>ESP32 BLE Switch</h1>
-  <p class="hint">
-    This page uses <b>Web Bluetooth (BLE)</b>. Use <b>Chrome on Android</b> or desktop Chrome/Edge.
-    GitHub Pages is HTTPS, so Web Bluetooth is allowed.
-  </p>
+  <h1>ESP32 Servo Switch</h1>
 
-  <div class="card">
-    <div class="row">
+  <div class="card row">
+    <div>
       <button id="btnConnect" class="primary">Connect</button>
       <button id="btnDisconnect" disabled>Disconnect</button>
-      <span class="status" id="status">Not connected</span>
     </div>
+    <div class="status" id="status">Not connected</div>
   </div>
 
-  <div class="card">
-    <div class="row" style="justify-content: space-between;">
-      <div>
-        <div style="font-weight:700; margin-bottom:6px;">Light Switch</div>
-        <div class="hint">Toggle sends <code>ON</code> / <code>OFF</code> to ESP32.</div>
-      </div>
-
-      <label class="switch" title="Toggle ON/OFF">
-        <input id="toggle" type="checkbox" disabled />
-        <span class="slider"></span>
-      </label>
+  <div class="card row">
+    <div>
+      <div style="font-weight:700;">Light Switch</div>
+      <div style="color:#444; font-size:14px;">Toggle sends ON / OFF</div>
     </div>
+
+    <label class="switch">
+      <input id="toggle" type="checkbox" disabled />
+      <span class="slider"></span>
+    </label>
   </div>
 
   <div class="card">
@@ -67,89 +56,68 @@
   </div>
 
 <script>
-  // Must match the ESP32 sketch UUIDs below:
   const SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
-  const CHAR_UUID    = "abcd1234-1234-1234-1234-abcdef123456"; // write characteristic
+  const CHAR_UUID    = "abcd1234-1234-1234-1234-abcdef123456";
 
   let device = null;
-  let server = null;
   let writeChar = null;
 
   const $ = (id) => document.getElementById(id);
-
-  function log(msg) {
-    const el = $("log");
-    el.textContent += msg + "\n";
-    el.scrollTop = el.scrollHeight;
-  }
-
-  function setConnected(yes) {
+  function log(m){ $("log").textContent += m + "\n"; }
+  function setConnected(yes){
     $("btnConnect").disabled = yes;
     $("btnDisconnect").disabled = !yes;
     $("toggle").disabled = !yes;
     $("status").textContent = yes ? `Connected: ${device?.name || "ESP32"}` : "Not connected";
   }
 
-  async function connect() {
+  async function connect(){
     try {
-      log("Requesting BLE device...");
+      log("Requesting device...");
       device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
+        filters: [{ namePrefix: "ESP32" }],      // should show ESP32_Switch_BLE
         optionalServices: [SERVICE_UUID]
       });
 
       device.addEventListener("gattserverdisconnected", () => {
-        log("Disconnected.");
+        log("Disconnected");
         writeChar = null;
         setConnected(false);
       });
 
-      log(`Selected: ${device.name || "(no name)"}`);
-      server = await device.gatt.connect();
-      log("GATT connected.");
+      const server = await device.gatt.connect();
+      log("GATT connected");
 
       const service = await server.getPrimaryService(SERVICE_UUID);
       writeChar = await service.getCharacteristic(CHAR_UUID);
 
-      log("Ready. Toggle the switch.");
+      log("Ready. Toggle ON/OFF.");
       setConnected(true);
     } catch (e) {
-      log("❌ Connect failed: " + e);
+      log("❌ " + e);
       setConnected(false);
     }
   }
 
-  async function disconnect() {
-    try {
-      if (device?.gatt?.connected) device.gatt.disconnect();
-    } finally {
-      writeChar = null;
-      setConnected(false);
-    }
+  async function disconnect(){
+    try { if (device?.gatt?.connected) device.gatt.disconnect(); }
+    finally { writeChar = null; setConnected(false); }
   }
 
-  async function send(text) {
-    if (!writeChar) { log("❌ Not connected."); return; }
-    try {
-      const data = new TextEncoder().encode(text);
-      await writeChar.writeValue(data);
-      log("➡️ Sent: " + text);
-    } catch (e) {
-      log("❌ Send failed: " + e);
-    }
+  async function send(text){
+    if (!writeChar) return log("❌ Not connected");
+    await writeChar.writeValue(new TextEncoder().encode(text));
+    log("➡️ " + text);
   }
 
   $("btnConnect").addEventListener("click", connect);
   $("btnDisconnect").addEventListener("click", disconnect);
-
-  $("toggle").addEventListener("change", (ev) => {
-    send(ev.target.checked ? "ON" : "OFF");
-  });
+  $("toggle").addEventListener("change", (e) => send(e.target.checked ? "ON" : "OFF"));
 
   if (!navigator.bluetooth) {
-    $("status").textContent = "Web Bluetooth not supported in this browser.";
+    $("status").textContent = "Web Bluetooth not supported here.";
     $("btnConnect").disabled = true;
-    log("❌ Use Chrome on Android or desktop Chrome/Edge.");
+    log("Use Chrome/Edge with Web Bluetooth (Android works best).");
   }
 </script>
 </body>
